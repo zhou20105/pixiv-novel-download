@@ -3,7 +3,7 @@
 
 ## 安装依赖
 ```bash
-pip install selenium webdriver_manager docx
+pip install selenium webdriver_manager python-docx
 ```
 
 ## 获取cookie
