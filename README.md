@@ -13,6 +13,11 @@ pip install selenium webdriver_manager docx
 ![获取cookie](<pic/屏幕截图 2024-11-26 193436.png>)
 ![获取cookie](pic/屏幕截图_20241126194313.jpg)
 - 4、将cookie格式化成下面的格式，替换py文件中的cookie。
+cookies = [
+{"name": "first_visit_datetime_pc", "value": "2024-11-02%2016%3A36%3A23", "domain": ".pixiv.net", "path": "/"},
+{"name": "p_ab_id", "value": "7", "domain": ".pixiv.net", "path": "/"},
+.........
+]
 
 ## 下载小说
 ### 单篇下载
