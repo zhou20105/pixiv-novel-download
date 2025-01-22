@@ -8,6 +8,24 @@ from docx import Document
 import os
 import re
 
+def convert_cookies(input_file):
+    """ 从文件中读取 cookies 并返回格式化后的列表 """
+    with open(input_file, 'r', encoding='utf-8') as f:
+        cookie_string = f.read().strip()
+    
+    cookies = []
+    cookie_entries = cookie_string.split('; ')
+    
+    for entry in cookie_entries:
+        name, value = entry.split('=', 1)
+        cookies.append({
+            "name": name,
+            "value": value,
+            "domain": ".pixiv.net",
+            "path": "/"
+        })
+    return cookies
+
 def sanitize_filename(filename):
     """去除文件名中的非法字符"""
     return re.sub(r'[\\/*?:"<>|]', "", filename)
@@ -70,11 +88,9 @@ def load_cookies(driver, cookies):
         driver.add_cookie(cookie)
 
 def main():
-    # 定义cookies（实际cookies请根据需要填写）
-    cookies = [
-    {"name": "PHPSESSID", "value": "your_session_id", "domain": ".pixiv.net", "path": "/"},
-    # 按照格式添加cookie
-    ]  # 请替换为实际的 cookies
+    # 从文件中读取cookies并格式化
+    input_file = "cookie.txt"
+    cookies = convert_cookies(input_file)
     
     # 设置driver并加载cookies
     driver = setup_driver()

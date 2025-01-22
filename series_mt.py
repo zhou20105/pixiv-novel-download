@@ -14,6 +14,23 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from docx import Document
 
+def convert_cookies(input_file):
+    """ 从文件中读取 cookies 并返回格式化后的列表 """
+    with open(input_file, 'r', encoding='utf-8') as f:
+        cookie_string = f.read().strip()
+    
+    cookies = []
+    cookie_entries = cookie_string.split('; ')
+    
+    for entry in cookie_entries:
+        name, value = entry.split('=', 1)
+        cookies.append({
+            "name": name,
+            "value": value,
+            "domain": ".pixiv.net",
+            "path": "/"
+        })
+    return cookies
 
 def create_driver(cookies):
     """ 创建独立的浏览器实例并加载 cookies """
@@ -129,9 +146,8 @@ def process_chapter(novel_url, chapter_number, series_folder, cookies):
 
 
 def download_series(series_id, status_label, progress_bar, output_label, output_path):
-    cookies = [
-    ........ #替换你自己的cookie
-    ]
+    input_file = "cookie.txt"
+    cookies = convert_cookies(input_file)
     
     status_label.config(text="Downloading...")
     

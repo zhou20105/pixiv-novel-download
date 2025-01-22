@@ -7,6 +7,24 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from docx import Document
 
+def convert_cookies(input_file):
+    """ 从文件中读取 cookies 并返回格式化后的列表 """
+    with open(input_file, 'r', encoding='utf-8') as f:
+        cookie_string = f.read().strip()
+    
+    cookies = []
+    cookie_entries = cookie_string.split('; ')
+    
+    for entry in cookie_entries:
+        name, value = entry.split('=', 1)
+        cookies.append({
+            "name": name,
+            "value": value,
+            "domain": ".pixiv.net",
+            "path": "/"
+        })
+    return cookies
+
 # 去除非法字符，防止保存出错
 def sanitize_filename(filename):
     return re.sub(r'[\\/*?:"<>|]', "", filename)
@@ -87,11 +105,8 @@ def create_series_folder(driver, series_url, cookies):
 
 # 主逻辑
 def main():
-    # 替换自己的 cookies
-    cookies = [
-    {"name": "PHPSESSID", "value": "your_session_id", "domain": ".pixiv.net", "path": "/"},
-    # 按照格式添加cookie
-    ]  # 请替换为实际的 cookies
+    input_file = "cookie.txt"
+    cookies = convert_cookies(input_file)
     
     while True:
         series_id = input("Enter the Pixiv series ID (or 'exit' to quit): ").strip()

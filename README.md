@@ -12,8 +12,7 @@ pip install selenium webdriver_manager docx
 - 3、在调试页面网络选项卡下，选择下图所示的项目并单击显示详情，完整复制cookie部分。
 ![获取cookie](<pic/屏幕截图 2024-11-26 193436.png>)
 ![获取cookie](pic/屏幕截图_20241126194313.jpg)
-- 4、将cookie格式化成下面的格式，替换py文件中的cookie。
-![cookie格式](<pic/屏幕截图 2025-01-22 235134.png>)
+- 4、打开cookie.txt文件，使用cookie覆盖文件内容即可。
 
 ## 下载小说
 ### 单篇下载
@@ -27,3 +26,4 @@ pip install selenium webdriver_manager docx
 ![系列id](<pic/屏幕截图 2024-11-26 201026.png>)
 
 - 下载会在当前目录下生成以系列名命名的文件夹，系列小说将保存在对应文件夹下。
+- 多线程下载已修改为图形界面，可自定义系列文件夹位置，推荐使用。
