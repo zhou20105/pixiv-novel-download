@@ -6,7 +6,7 @@
 
 ## 安装依赖
 ```bash
-pip install selenium webdriver_manager python-docx
+pip install python-docx tkinter concurrent
 ```
 
 ## 获取cookie
