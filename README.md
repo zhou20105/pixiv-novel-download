@@ -1,4 +1,7 @@
 # pixiv-novel-download
+
+更改获取方式，采用API方式获取，弃用series.py(单线程)。
+
 下载保存pixiv小说（单篇、系列），自用。
 
 ## 安装依赖
@@ -21,7 +24,7 @@ pip install selenium webdriver_manager python-docx
 ![小说id](<pic/屏幕截图 2024-11-26 200637.png>)
 
 ### 系列下载
-- 运行series_mt.py(多线程)、series.py(单线程)，输入系列id并回车即可下载。
+- 运行series_mt.py(多线程)，输入系列id并回车即可下载。
 
 ![系列id](<pic/屏幕截图 2024-11-26 201026.png>)
 
