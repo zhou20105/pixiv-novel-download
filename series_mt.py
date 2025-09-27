@@ -2,119 +2,155 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox
 from tkinter import filedialog
+import requests
+import json
 import os
 import re
-import time
 from concurrent.futures import ProcessPoolExecutor
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 from docx import Document
 
 def convert_cookies(input_file):
-    """ 从文件中读取 cookies 并返回格式化后的列表 """
+    """ 从文件中读取 cookies 并返回格式化后的字符串 """
     with open(input_file, 'r', encoding='utf-8') as f:
         cookie_string = f.read().strip()
-    
-    cookies = []
-    cookie_entries = cookie_string.split('; ')
-    
-    for entry in cookie_entries:
-        name, value = entry.split('=', 1)
-        cookies.append({
-            "name": name,
-            "value": value,
-            "domain": ".pixiv.net",
-            "path": "/"
-        })
-    return cookies
+    return cookie_string
 
-def create_driver(cookies):
-    """ 创建独立的浏览器实例并加载 cookies """
-    service = Service(ChromeDriverManager().install())
-    options = webdriver.ChromeOptions()
-    options.add_argument('--headless')  # 无头模式
-    options.add_argument('--disable-gpu')  # 禁用 GPU 加速
-    options.add_argument('--no-sandbox')  # 防止沙盒问题
-    driver = webdriver.Chrome(service=service, options=options)
-    
-    # 加载 cookies
-    driver.get("https://www.pixiv.net")  # 必须访问页面才能添加 cookies
-    for cookie in cookies:
-        driver.add_cookie(cookie)  # 添加 cookies
-    return driver
-
-
-# 去除非法字符，防止保存出错
 def sanitize_filename(filename):
+    """去除文件名中的非法字符"""
     return re.sub(r'[\\/*?:"<>|]', "", filename)
 
-
-# 提取网页标题和正文内容
-def extract_novel_content(driver, url, chapter_number):
-    driver.get(url)
-    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, 'sc-khIgEk')))  # 等待内容加载
+def extract_novel_content(novel_id, cookies):
+    """根据小说ID通过API获取小说标题和内容"""
+    url = f"https://www.pixiv.net/ajax/novel/{novel_id}"
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Cookie': cookies,
+        'Referer': f'https://www.pixiv.net/novel/show.php?id={novel_id}',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    }
     
     try:
-        # 获取章节标题
-        title_element = driver.find_element(By.CLASS_NAME, 'sc-1u8nu73-3')
-        novel_title = title_element.text.strip() if title_element else f"Chapter {chapter_number}"
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
         
-        # 获取章节内容
-        content_element = driver.find_element(By.CLASS_NAME, 'sc-khIgEk')
-        paragraphs = content_element.find_elements(By.TAG_NAME, 'p')
+        # 解析JSON响应
+        data = response.json()
         
-        content = "\\n".join([p.text.strip() for p in paragraphs if p.text.strip()])
-        return novel_title, content
-    
+        # 检查响应是否成功
+        if data.get('error'):
+            print(f"API返回错误: {data.get('message', '未知错误')}")
+            return None, None
+        
+        # 从body中提取数据
+        body = data.get('body', {})
+        
+        # 提取标题
+        novel_title = body.get('title', '')
+        
+        # 提取内容
+        novel_content = body.get('content', '')
+        
+        # Unicode解码（如果需要）
+        # JSON自动处理Unicode编码，所以通常不需要额外转换
+        # 但如果内容中有转义的Unicode，这里会自动处理
+        
+        if not novel_title or not novel_content:
+            print("未能获取到小说标题或内容")
+            return None, None
+            
+        return novel_title, novel_content
+        
+    except requests.exceptions.RequestException as e:
+        print(f"请求失败: {e}")
+        return None, None
+    except json.JSONDecodeError as e:
+        print(f"JSON解析失败: {e}")
+        return None, None
     except Exception as e:
-        print(f"Error extracting content: {e}")
+        print(f"提取小说内容时发生错误: {e}")
         return None, None
 
+def parse_novel_content(content):
+    """解析小说内容，处理特殊标记"""
+    # 处理换行标记
+    content = content.replace('[newpage]', '\n\n')
+    content = content.replace('[[rb:', '[')  # 处理ruby标记
+    content = content.replace(']]', ']')
+    
+    # 分割段落
+    paragraphs = content.split('\n')
+    
+    # 过滤空段落
+    paragraphs = [p.strip() for p in paragraphs if p.strip()]
+    
+    return paragraphs
 
-# 保存内容到Word文档，并加上章节序号
-def save_to_word(novel_title, content, folder_path, chapter_number):
+def save_novel_to_word(novel_title, content, series_folder, chapter_number):
+    """将提取的内容保存到Word文档"""
     doc = Document()
     doc.add_heading(f"第 {chapter_number} 章: {novel_title}", level=1)
-    doc.add_paragraph(content)
     
-    # 文件名合法化并加上章节序号
+    # 解析内容为段落
+    paragraphs = parse_novel_content(content)
+    
+    for paragraph in paragraphs:
+        if paragraph:
+            doc.add_paragraph(paragraph)
+
+    # 创建一个合法的文件名并保存文档
+    sanitized_title = sanitize_filename(novel_title)
     file_name = f"第{chapter_number}章_{sanitize_filename(novel_title)}.docx"
-    save_path = os.path.join(folder_path, file_name)
+    save_path = os.path.join(series_folder, file_name)
     doc.save(save_path)
-    print(f"Saved to {save_path}")
+    print(f"小说已保存到: {save_path}")
 
 
 # 提取系列章节URL
-def extract_novel_urls(driver, series_url):
-    aurls = []
-    for i in range(1, 101):  # 假设最多分页100
-        driver.get(f"{series_url}?p={i}")
-        time.sleep(3)  # 等待章节加载
-        
-        # 获取章节链接
-        novel_elements = driver.find_elements(By.CLASS_NAME, 'sc-1c4k3wn-12')
-        if not novel_elements:
-            break
-        
-        for novel_element in novel_elements:
-            novel_url = novel_element.find_element(By.TAG_NAME, 'a')
-            aurls.append(novel_url.get_attribute('href'))
-    return aurls
+def extract_novel_ids(series_id, cookies):
+    novel_ids = []
+    series_url = f"https://www.pixiv.net/ajax/novel/series/{series_id}/content_titles"
+    headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Cookie': cookies,
+                'Referer': f'https://www.pixiv.net/novel/series/{series_id}',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            }
+    try:
+        response = requests.get(series_url, headers=headers)
+        response.raise_for_status()
+        # 解析JSON响应
+        data = response.json()
+    
+        # 检查响应是否成功
+        if data.get('error'):
+            print(f"API返回错误: {data.get('message', '未知错误')}")
+            return None, None
+    
+        # 从body中提取数据
+        body = data.get('body', {})
+    
+        for item in body:
+            novel_id = item.get('id')
+            if novel_id:
+                novel_ids.append(novel_id)
+    except requests.exceptions.RequestException as e:
+        print(f"请求失败: {e}")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"JSON解析失败: {e}")
+        return None
+    except Exception as e:
+        print(f"提取章节URL时发生错误: {e}")
+        return None
+    return novel_ids
 
 
 # 获取系列名称并创建文件夹
-def create_series_folder(driver, series_url, output_path=None):
-    driver.get(series_url)
-    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, 'sc-vk2fvc-2')))  # 等待系列标题加载
-    
+def create_series_folder(series_title, output_path=None):
     try:
-        # 获取系列标题
-        series_element = driver.find_element(By.CLASS_NAME, 'sc-vk2fvc-2')
-        series_title = sanitize_filename(series_element.text.strip()) if series_element else "Unknown Series"
         
         # 创建文件夹
         if output_path:
@@ -132,17 +168,14 @@ def create_series_folder(driver, series_url, output_path=None):
         return None
 
 
-def process_chapter(novel_url, chapter_number, series_folder, cookies):
+def process_chapter(novel_id, chapter_number, series_folder, cookies):
     """ 处理每个章节的下载 """
-    driver = create_driver(cookies)
     try:
-        novel_title, content = extract_novel_content(driver, novel_url, chapter_number)
+        novel_title, content = extract_novel_content( novel_id, cookies)
         if novel_title and content:
-            save_to_word(novel_title, content, series_folder, chapter_number)
+            save_novel_to_word(novel_title, content, series_folder, chapter_number)
     except Exception as e:
         print(f"Error processing chapter {chapter_number}: {e}")
-    finally:
-        driver.quit()  # 确保每个进程关闭其浏览器实例
 
 
 def download_series(series_id, status_label, progress_bar, output_label, output_path):
@@ -152,25 +185,60 @@ def download_series(series_id, status_label, progress_bar, output_label, output_
     status_label.config(text="Downloading...")
     
     try:
-        # 创建主浏览器实例
-        driver = create_driver(cookies)
-        series_url = f"https://www.pixiv.net/novel/series/{series_id}"
-        series_folder = create_series_folder(driver, series_url, output_path)
+        # 
+        series_url = f"https://www.pixiv.net/ajax/novel/series/{series_id}"
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Cookie': cookies,
+            'Referer': f'https://www.pixiv.net/novel/series/{series_id}',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        }
+        
+        try:
+            response = requests.get(series_url, headers=headers)
+            response.raise_for_status()
+            # 解析JSON响应
+            data = response.json()
+        
+            # 检查响应是否成功
+            if data.get('error'):
+                print(f"API返回错误: {data.get('message', '未知错误')}")
+                return None, None
+        
+            # 从body中提取数据
+            body = data.get('body', {})
+        
+            # 提取标题
+            series_title = body.get('title', '')
+            
+        except requests.exceptions.RequestException as e:
+            status_label.config(text=f"请求失败: {e}")
+            return
+        except json.JSONDecodeError as e:
+            status_label.config(text=f"JSON解析失败: {e}")
+            return
+        except Exception as e:
+            status_label.config(text=f"提取系列标题时发生错误: {e}")
+            return
+        
+        series_folder = create_series_folder(series_title, output_path)
         if not series_folder:
             status_label.config(text="创建系列文件夹失败，跳过此系列。")
             return
         
         output_label.config(text=f"Output folder: {series_folder}")
-        novel_urls = extract_novel_urls(driver, series_url)
+        novel_ids = extract_novel_ids(series_id, cookies)
         
-        total_chapters = len(novel_urls)
+        total_chapters = len(novel_ids)
         progress_bar['maximum'] = total_chapters
         
         # 使用进程池并行下载章节，确保每个进程使用独立的浏览器实例
         with ProcessPoolExecutor(max_workers=5) as executor:
             futures = [
-                executor.submit(process_chapter, url, i + 1, series_folder, cookies)
-                for i, url in enumerate(novel_urls)
+                executor.submit(process_chapter, novel_id, i + 1, series_folder, cookies)
+                for i, novel_id in enumerate(novel_ids)
             ]
             # 等待所有任务完成
             for i, future in enumerate(futures):
@@ -182,9 +250,6 @@ def download_series(series_id, status_label, progress_bar, output_label, output_
     
     except Exception as e:
         status_label.config(text=f"发生错误：{e}")
-    finally:
-        if 'driver' in locals():
-            driver.quit()
 
 
 def main():
